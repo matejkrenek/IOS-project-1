@@ -1,10 +1,18 @@
 #!/bin/bash
 
+# Configurations
 POSIXLY_CORRECT=yes
+DATETIME_FORMAT=^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$
+
+# Parameters
 USER=""
 COMMAND="list"
-FILTERS=()
+DATETIME_AFTER=""
+DATETIME_BEFORE=""
+CURRENCIES=()
 LOGS=()
+PARAMS=()
+XTF_PROFIT=${XTF_PROFIT:=20}
 
 print_help() {
     echo ""
@@ -25,49 +33,107 @@ print_error() {
 }
 
 validate_datatime() {
-    if ! [[ $1 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
+    if ! [[ $1 =~ $DATETIME_FORMAT ]]; then
         print_error "Invalid datetime format of $2 (Should be YYYY-DD-MM HH:MM:SS)"
     fi
 }
+
+process() {
+    local QUERY="awk -v username=\"$USER\" -v currencies=\"$(IFS='|'; echo "${CURRENCIES[*]}")\" -v datetime_after=\"$DATETIME_AFTER\" -v datetime_before=\"$DATETIME_BEFORE\" -v profit=\"$XTF_PROFIT\" -F \";\" "
+
+    QUERY+="'\$1 == username"
+
+    if [[ ${#CURRENCIES[@]} -gt 0 ]]; then
+        QUERY+=" && (\$3 ~ \"^(\"currencies\")$\")"
+    fi
+
+    if [[ -n "$DATETIME_AFTER" ]]; then
+        QUERY+=" && (\$2 > \"$DATETIME_AFTER\")"
+    fi
+
+    if [[ -n "$DATETIME_BEFORE" ]]; then
+        QUERY+=" && (\$2 < \"$DATETIME_BEFORE\")"
+    fi
+
+    if [[ $COMMAND == "list-currency" ]]; then
+        QUERY+=" { print \$3 }' | sort | uniq"
+    elif [[ $COMMAND == "status" ]]; then
+        QUERY+=" { sum[\$3] += \$4 } END { for (currency in sum) print currency, sum[currency] }' | sort"
+    elif [[ $COMMAND == "profit" ]]; then
+        QUERY+=" { if (\$4 > 0) { sum[\$3] += \$4 * (1 + profit/100) } else { sum[\$3] += \$4 } } END { for (currency in sum) print currency, sum[currency] }' | sort"
+    else
+        QUERY+=" { print \$0 }'"
+    fi
+
+    eval "$QUERY"
+}
+
+if [[ $# -eq 0 ]]; then
+    print_help
+fi
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         -h|--help)
             print_help
             ;;
-        -a|-b|-c)
+        -a)
             if [[ -z "$2" ]]; then
                 print_error "Filter $1 requires a value"
-            else
-                validate_datatime $2 $1
-
-                if [[ ! " ${FILTERS[@]}" =~ " $1;" && ($1 == "-a" || $1 == "-b") ]]; then
-                    FILTERS+=("$1;$2")
-                elif [[ $1 == "-c" ]]; then
-                    FILTERS+=("$1;$2")
-                fi
-
-                shift 2
             fi
+
+            validate_datatime "$2" "$1"
+            DATETIME_AFTER=$2
+            shift 2
+            ;;
+        -b)
+            if [[ -z "$2" ]]; then
+                print_error "Filter $1 requires a value"
+            fi
+
+            validate_datatime "$2" "$1"
+            DATETIME_BEFORE=$2
+            shift 2
+            ;;
+        -c)
+            if [[ -z "$2" ]]; then
+                print_error "Filter $1 requires a value"
+            fi
+
+            CURRENCIES+=("$2")
+            shift 2
             ;;
         list|list-currency|status|profit)
             COMMAND=$1
             shift
             ;;
         *)
-            break
+            PARAMS+=("$1")
+            shift
             ;;
     esac
 done
 
-if [[ -z "$1" ]]; then
-    print_error "Username has not been defined"
-else
-    USER=$1
-    shift
+for param in "${PARAMS[@]}"; do
+    if [[ $param == "${PARAMS[0]}" && -z "$USER" ]]; then
+        USER=$param
+    else
+        LOGS+=($param)
+    fi
+done
+
+if [[ -z "$USER" ]]; then
+    print_error "Username is not defined"
 fi
 
-LOGS=("$@")
 
-echo ${LOGS[@]}
-echo ${FILTERS[@]}
+for log in "${LOGS[@]}"; do
+    if [[ -f "$log" ]]; then
+        if [[ "$log" == *.gz ]]; then
+            gunzip -c "$log"
+        else
+            cat "$log"
+            echo ""
+        fi
+    fi
+done | process

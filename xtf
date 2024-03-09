@@ -1,3 +1,73 @@
 #!/bin/bash
 
-echo "Hello world"
+POSIXLY_CORRECT=yes
+USER=""
+COMMAND="list"
+FILTERS=()
+LOGS=()
+
+print_help() {
+    echo ""
+    echo "Usage: $0 [-h|--help] [FILTR] [PŘÍKAZ] UŽIVATEL LOG [LOG2 [...]]"
+    echo "Options:"
+    echo "  -h, --help       Display this help message"
+    echo "  FILTR            Options: -a DATETIME, -b DATETIME, -c CURRENCY"
+    echo "  PŘÍKAZ           Command: list, list-currency, status, profit"
+    echo "  UŽIVATEL         User identifier"
+    echo "  LOG              List of .log files"
+    echo ""
+    exit 0
+}
+
+print_error() {
+    echo "Error: $1" >&2
+    exit 1
+}
+
+validate_datatime() {
+    if ! [[ $1 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
+        print_error "Invalid datetime format of $2 (Should be YYYY-DD-MM HH:MM:SS)"
+    fi
+}
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            print_help
+            ;;
+        -a|-b|-c)
+            if [[ -z "$2" ]]; then
+                print_error "Filter $1 requires a value"
+            else
+                validate_datatime $2 $1
+
+                if [[ ! " ${FILTERS[@]}" =~ " $1;" && ($1 == "-a" || $1 == "-b") ]]; then
+                    FILTERS+=("$1;$2")
+                elif [[ $1 == "-c" ]]; then
+                    FILTERS+=("$1;$2")
+                fi
+
+                shift 2
+            fi
+            ;;
+        list|list-currency|status|profit)
+            COMMAND=$1
+            shift
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+if [[ -z "$1" ]]; then
+    print_error "Username has not been defined"
+else
+    USER=$1
+    shift
+fi
+
+LOGS=("$@")
+
+echo ${LOGS[@]}
+echo ${FILTERS[@]}

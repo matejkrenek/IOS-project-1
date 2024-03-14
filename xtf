@@ -58,9 +58,9 @@ process() {
     if [[ $COMMAND == "list-currency" ]]; then
         QUERY+=" { print \$3 }' | sort | uniq"
     elif [[ $COMMAND == "status" ]]; then
-        QUERY+=" { sum[\$3] += \$4 } END { for (currency in sum) print currency, sum[currency] }' | sort"
+        QUERY+=" { sum[\$3] += \$4 } END { for (currency in sum) printf \"%s : %.4f\n\", currency, sum[currency] }' | sort"
     elif [[ $COMMAND == "profit" ]]; then
-        QUERY+=" { if (\$4 > 0) { sum[\$3] += \$4 * (1 + profit/100) } else { sum[\$3] += \$4 } } END { for (currency in sum) print currency, sum[currency] }' | sort"
+        QUERY+=" { if (\$4 > 0) { sum[\$3] += \$4 * (1 + profit/100) } else { sum[\$3] += \$4 } } END { for (currency in sum) printf \"%s : %.4f\n\", currency, sum[currency] }' | sort"
     else
         QUERY+=" { print \$0 }'"
     fi
@@ -68,72 +68,76 @@ process() {
     eval "$QUERY"
 }
 
-if [[ $# -eq 0 ]]; then
-    print_help
-fi
-
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -h|--help)
-            print_help
-            ;;
-        -a)
-            if [[ -z "$2" ]]; then
-                print_error "Filter $1 requires a value"
-            fi
-
-            validate_datatime "$2" "$1"
-            DATETIME_AFTER=$2
-            shift 2
-            ;;
-        -b)
-            if [[ -z "$2" ]]; then
-                print_error "Filter $1 requires a value"
-            fi
-
-            validate_datatime "$2" "$1"
-            DATETIME_BEFORE=$2
-            shift 2
-            ;;
-        -c)
-            if [[ -z "$2" ]]; then
-                print_error "Filter $1 requires a value"
-            fi
-
-            CURRENCIES+=("$2")
-            shift 2
-            ;;
-        list|list-currency|status|profit)
-            COMMAND=$1
-            shift
-            ;;
-        *)
-            PARAMS+=("$1")
-            shift
-            ;;
-    esac
-done
-
-for param in "${PARAMS[@]}"; do
-    if [[ $param == "${PARAMS[0]}" && -z "$USER" ]]; then
-        USER=$param
-    else
-        LOGS+=($param)
+main () {
+    if [[ $# -eq 0 ]]; then
+        print_help
     fi
-done
 
-if [[ -z "$USER" ]]; then
-    print_error "Username is not defined"
-fi
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--help)
+                print_help
+                ;;
+            -a)
+                if [[ -z "$2" ]]; then
+                    print_error "Filter $1 requires a value"
+                fi
 
+                validate_datatime "$2" "$1"
+                DATETIME_AFTER=$2
+                shift 2
+                ;;
+            -b)
+                if [[ -z "$2" ]]; then
+                    print_error "Filter $1 requires a value"
+                fi
 
-for log in "${LOGS[@]}"; do
-    if [[ -f "$log" ]]; then
-        if [[ "$log" == *.gz ]]; then
-            gunzip -c "$log"
+                validate_datatime "$2" "$1"
+                DATETIME_BEFORE=$2
+                shift 2
+                ;;
+            -c)
+                if [[ -z "$2" ]]; then
+                    print_error "Filter $1 requires a value"
+                fi
+
+                CURRENCIES+=("$2")
+                shift 2
+                ;;
+            list|list-currency|status|profit)
+                COMMAND=$1
+                shift
+                ;;
+            *)
+                PARAMS+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    for param in "${PARAMS[@]}"; do
+        if [[ $param == "${PARAMS[0]}" && -z "$USER" ]]; then
+            USER="$param"
         else
-            cat "$log"
-            echo ""
+            LOGS+=("$param")
         fi
+    done
+
+    if [[ -z "$USER" ]]; then
+        print_error "Username is not defined"
     fi
-done | process
+
+
+    for log in "${LOGS[@]}"; do
+        if [[ -f "$log" ]]; then
+            if [[ "$log" == *.gz ]]; then
+                gunzip -c "$log"
+            else
+                cat "$log"
+                echo ""
+            fi
+        fi
+    done | process
+}
+
+main "$@"

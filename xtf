@@ -1,10 +1,9 @@
 #!/bin/bash
 
-# Configurations
-POSIXLY_CORRECT=yes
+export POSIXLY_CORRECT=yes
+
 DATETIME_FORMAT=^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$
 
-# Parameters
 USER=""
 COMMAND="list"
 DATETIME_AFTER=""
@@ -34,7 +33,7 @@ print_error() {
 
 validate_datatime() {
     if ! [[ $1 =~ $DATETIME_FORMAT ]]; then
-        print_error "Invalid datetime format of $2 (Should be YYYY-DD-MM HH:MM:SS)"
+        print_error "Invalid datetime format of $2 (Expected format YYYY-DD-MM HH:MM:SS)"
     fi
 }
 
@@ -43,6 +42,7 @@ process() {
 
     QUERY+="'\$1 == username"
 
+    # Add conditions to AWK for passed nonempty filters
     if [[ ${#CURRENCIES[@]} -gt 0 ]]; then
         QUERY+=" && (\$3 ~ \"^(\"currencies\")$\")"
     fi
@@ -55,6 +55,7 @@ process() {
         QUERY+=" && (\$2 < \"$DATETIME_BEFORE\")"
     fi
 
+    # Process AWK output format based on selected $COMMAND
     if [[ $COMMAND == "list-currency" ]]; then
         QUERY+=" { print \$3 }' | sort | uniq"
     elif [[ $COMMAND == "status" ]]; then
@@ -69,6 +70,7 @@ process() {
 }
 
 main () {
+    # Print help when no arguments passed
     if [[ $# -eq 0 ]]; then
         print_help
     fi
@@ -109,12 +111,14 @@ main () {
                 shift
                 ;;
             *)
+                # Add unclassified arguments to $PARAMS for further processing
                 PARAMS+=("$1")
                 shift
                 ;;
         esac
     done
 
+    # Process unclassified arguments to $USER and $LOGS
     for param in "${PARAMS[@]}"; do
         if [[ $param == "${PARAMS[0]}" && -z "$USER" ]]; then
             USER="$param"
@@ -124,10 +128,10 @@ main () {
     done
 
     if [[ -z "$USER" ]]; then
-        print_error "Username is not defined"
+        print_error "Username is required"
     fi
 
-
+    # Loop through valid log files and output their content to the input of AWK processing
     for log in "${LOGS[@]}"; do
         if [[ -f "$log" ]]; then
             if [[ "$log" == *.gz ]]; then

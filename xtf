@@ -48,11 +48,11 @@ process() {
     fi
 
     if [[ -n "$DATETIME_AFTER" ]]; then
-        QUERY+=" && (\$2 > \"$DATETIME_AFTER\")"
+        QUERY+=" && (\$2 > datetime_after)"
     fi
 
     if [[ -n "$DATETIME_BEFORE" ]]; then
-        QUERY+=" && (\$2 < \"$DATETIME_BEFORE\")"
+        QUERY+=" && (\$2 < datetime_before)"
     fi
 
     # Process AWK output format based on selected $COMMAND
